@@ -1,3 +1,4 @@
+from datetime import date
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.hashers import check_password
 from django.shortcuts import render
@@ -100,26 +101,37 @@ def consult_client(request):
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+def get_birthdate_from_age(age):
+    current_year = date.today().year
+    birth_year = current_year - age
+    return date(birth_year, 1, 1)
+
 @api_view(['GET'])
 def consult_mascotas(request):
-    search = request.GET.get('search', '')
-    column = request.GET.get('column', 'nombre')  
+    search = request.GET.get('search', '')  # Puede ser el nombre, raza, etc.
+    column = request.GET.get('column', 'nombre')  # Default: buscar por nombre
     order = request.GET.get('order', 'asc')
 
     try:
         mascotas = Mascotas.objects.all()
 
+        # Aplicar filtros de búsqueda si es necesario
         if search:
-            # Realizar la búsqueda en la columna especificada
-            search_filter = {f'{column}__icontains': search}
-            mascotas = mascotas.filter(**search_filter)
+            if column == 'fecha_nacimiento':
+                birthdate = get_birthdate_from_age(int(search))
+                mascotas = mascotas.filter(fecha_nacimiento__year=birthdate.year)
+            elif column == 'usuario_cliente':
+                search_filter = {'usuario_cliente__usuario__icontains': search}
+                mascotas = mascotas.filter(**search_filter)
+            else:
+                search_filter = {f'{column}__icontains': search}
+                mascotas = mascotas.filter(**search_filter)
 
         if order == 'desc':
             mascotas = mascotas.order_by(f'-{column}')
         else:
             mascotas = mascotas.order_by(column)
 
-        # Paginar los resultados
         paginator = CustomPagination()
         result_page = paginator.paginate_queryset(mascotas, request)
         serializer = MascotaSerializer(result_page, many=True)
@@ -128,3 +140,5 @@ def consult_mascotas(request):
 
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
